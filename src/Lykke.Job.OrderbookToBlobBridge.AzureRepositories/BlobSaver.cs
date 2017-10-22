@@ -14,6 +14,7 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
     public class BlobSaver
     {
         private const int _warningQueueCount = 1000;
+        private const int _maxBlockSize = 4 * 1024 * 1024; // 4 Mb
         private readonly ILog _log;
         private readonly string _containerName;
         private readonly CloudStorageAccount _storageAccount;
@@ -124,55 +125,87 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
                     }
                     catch (Exception exc)
                     {
-                        await _log.WriteErrorAsync(
-                            nameof(BlobSaver),
-                            nameof(ProcessQueue),
-                            exc);
+                        await _log.WriteErrorAsync(nameof(BlobSaver), nameof(ProcessQueue), exc);
                         continue;
                     }
                 }
 
-                List<Tuple<DateTime, string>> items = null;
+                await SaveQueueAsync(blob, count);
+            }
+        }
+
+        private async Task SaveQueueAsync(CloudAppendBlob blob, int count)
+        {
+            List<Tuple<DateTime, string>> items = null;
+            try
+            {
+                items = _queue.GetRange(0, count);
+                await _lock.WaitAsync();
                 try
                 {
-                    items = _queue.GetRange(0, count);
+                    _queue.RemoveRange(0, count);
+                }
+                finally
+                {
+                    _lock.Release();
+                }
+
+                byte[] bytes = null;
+                int i;
+                for (i = items.Count; i >= 0; i++)
+                {
+                    StringBuilder strBuilder = new StringBuilder();
+                    for (int j = 0; j < i; j++)
+                    {
+                        strBuilder.AppendLine(items[j].Item2);
+                    }
+                    string text = strBuilder.ToString();
+                    bytes = Encoding.UTF8.GetBytes(text);
+                    if (bytes.Length <= _maxBlockSize)
+                        break;
+                }
+                if (i == 0)
+                    await _log.WriteErrorAsync(
+                        "BlobSaver-SaveQueueAsync",
+                        items[0].Item2,
+                        new InvalidOperationException("Could not append new block. Item is too large!"));
+                var stream = new MemoryStream(bytes);
+                await blob.AppendBlockAsync(stream);
+                if (i < items.Count)
+                {
                     await _lock.WaitAsync();
                     try
                     {
-                        _queue.RemoveRange(0, count);
+                        var notSaved = items.GetRange(i, items.Count - i);
+                        _queue.InsertRange(0, notSaved);
                     }
                     finally
                     {
                         _lock.Release();
                     }
-
-                    string text = string.Join(Environment.NewLine, items.Select(i => i.Item2).Append(string.Empty));
-                    byte[] bytes = Encoding.UTF8.GetBytes(text);
-                    var stream = new MemoryStream(bytes);
-                    await blob.AppendBlockAsync(stream);
                 }
-                catch (Exception exc)
+            }
+            catch (Exception exc)
+            {
+                if (items != null)
                 {
-                    if (items != null)
+                    await _lock.WaitAsync();
+                    try
                     {
-                        await _lock.WaitAsync();
-                        try
-                        {
-                            _queue.InsertRange(0, items);
-                        }
-                        finally
-                        {
-                            _lock.Release();
-                        }
+                        _queue.InsertRange(0, items);
                     }
-
-                    await _log.WriteErrorAsync(
-                        nameof(BlobSaver),
-                        nameof(ProcessQueue) + (blob?.Uri != null ? blob.Uri.ToString() : ""),
-                        exc);
-
-                    await Task.Delay(TimeSpan.FromSeconds(3));
+                    finally
+                    {
+                        _lock.Release();
+                    }
                 }
+
+                await _log.WriteErrorAsync(
+                    nameof(BlobSaver),
+                    nameof(ProcessQueue) + (blob?.Uri != null ? blob.Uri.ToString() : ""),
+                    exc);
+
+                await Task.Delay(TimeSpan.FromSeconds(3));
             }
         }
 
