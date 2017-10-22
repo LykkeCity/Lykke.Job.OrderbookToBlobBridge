@@ -152,7 +152,7 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
 
                 byte[] bytes = null;
                 int i;
-                for (i = items.Count; i >= 0; i++)
+                for (i = items.Count; i >= 0; --i)
                 {
                     StringBuilder strBuilder = new StringBuilder();
                     for (int j = 0; j < i; j++)
