@@ -53,8 +53,8 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
             }
             if (count > _warningQueueCount)
                 await _log.WriteWarningAsync(
-                    nameof(BlobSaver),
-                    nameof(SaveDataItemAsync),
+                    "BlobSaver.SaveDataItemAsync",
+                    _containerName,
                     $"{count} items in saving queue (> {_warningQueueCount})!");
         }
 
@@ -125,7 +125,7 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
                     }
                     catch (Exception exc)
                     {
-                        await _log.WriteErrorAsync(nameof(BlobSaver), nameof(ProcessQueue), exc);
+                        await _log.WriteErrorAsync("BlobSaver.ProcessQueue", _containerName, exc);
                         continue;
                     }
                 }
@@ -166,7 +166,7 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
                 }
                 if (i == 0)
                     await _log.WriteErrorAsync(
-                        "BlobSaver-SaveQueueAsync",
+                        "BlobSaver.SaveQueueAsync."+_containerName,
                         items[0].Item2,
                         new InvalidOperationException("Could not append new block. Item is too large!"));
                 var stream = new MemoryStream(bytes);
@@ -201,8 +201,8 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
                 }
 
                 await _log.WriteErrorAsync(
-                    nameof(BlobSaver),
-                    nameof(ProcessQueue) + (blob?.Uri != null ? blob.Uri.ToString() : ""),
+                    "BlobSaver.ProcessQueue",
+                    (blob?.Uri != null ? blob.Uri.ToString() : ""),
                     exc);
 
                 await Task.Delay(TimeSpan.FromSeconds(3));
