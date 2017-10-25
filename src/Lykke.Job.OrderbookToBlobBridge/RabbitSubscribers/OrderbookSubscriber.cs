@@ -72,8 +72,6 @@ namespace Lykke.Job.OrderbookToBlobBridge.RabbitSubscribers
         public void Stop()
         {
             _subscriber.Stop();
-            foreach (var pair in _dict)
-                pair.Value.Stop();
         }
 
         private async Task ProcessMessageAsync(OrderbookMessage item)

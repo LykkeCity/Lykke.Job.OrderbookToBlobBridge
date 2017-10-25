@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using System.Text;
 using System.IO;
 using System.Collections.Generic;
@@ -13,7 +14,7 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
     public class BlobSaver
     {
         private const int _warningQueueCount = 1000;
-        private const int _writeBlockSize = 3 * 1024 * 1024; // 4 Mb - Max
+        private const int _maxBlockSize = 4 * 1024 * 1024; // 4 Mb
         private readonly ILog _log;
         private readonly string _containerName;
         private readonly CloudStorageAccount _storageAccount;
@@ -74,7 +75,17 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
 
             while (true)
             {
-                int itemsCount = _queue.Count;
+                int itemsCount;
+                await _lock.WaitAsync();
+                try
+                {
+                    itemsCount = _queue.Count;
+                }
+                finally
+                {
+                    _lock.Release();
+                }
+
                 if (itemsCount == 0)
                 {
                     if (!_mustStop)
@@ -139,18 +150,25 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
                     _lock.Release();
                 }
 
-                int allLength = 0;
-                StringBuilder strBuilder = new StringBuilder();
+                byte[] bytes = null;
                 int i;
-                for (i = 0; i < items.Count; ++i)
+                for (i = items.Count; i >= 0; --i)
                 {
-                    allLength += items[i].Item2.Length;
-                    if (allLength > _writeBlockSize)
+                    StringBuilder strBuilder = new StringBuilder();
+                    for (int j = 0; j < i; j++)
+                    {
+                        strBuilder.AppendLine(items[j].Item2);
+                    }
+                    string text = strBuilder.ToString();
+                    bytes = Encoding.UTF8.GetBytes(text);
+                    if (bytes.Length <= _maxBlockSize)
                         break;
-                    strBuilder.AppendLine(items[i].Item2);
                 }
-                string text = strBuilder.ToString();
-                byte[] bytes = Encoding.UTF8.GetBytes(text);
+                if (i == 0)
+                    await _log.WriteErrorAsync(
+                        "BlobSaver.SaveQueueAsync."+_containerName,
+                        items[0].Item2,
+                        new InvalidOperationException("Could not append new block. Item is too large!"));
                 var stream = new MemoryStream(bytes);
                 await blob.AppendBlockAsync(stream);
                 if (i < items.Count)
