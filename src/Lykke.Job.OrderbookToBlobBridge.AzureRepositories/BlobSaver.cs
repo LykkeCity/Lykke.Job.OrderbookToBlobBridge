@@ -20,6 +20,7 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
         private readonly List<Tuple<DateTime, string>> _queue = new List<Tuple<DateTime, string>>();
         private readonly SemaphoreSlim _lock = new SemaphoreSlim(1, 1);
         private readonly int _maxInBatch;
+        private readonly TimeSpan _delay = TimeSpan.FromMilliseconds(100);
         private DateTime _lastDay = DateTime.MinValue;
         private DateTime _lastWarning = DateTime.MinValue;
         private volatile bool _mustStop;
@@ -82,21 +83,11 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
 
             while (true)
             {
-                int itemsCount;
-                await _lock.WaitAsync();
-                try
-                {
-                    itemsCount = _queue.Count;
-                }
-                finally
-                {
-                    _lock.Release();
-                }
-
+                int itemsCount = _queue.Count;
                 if (itemsCount == 0)
                 {
                     if (!_mustStop)
-                        await Task.Delay(TimeSpan.FromSeconds(1));
+                        await Task.Delay(_delay);
                     continue;
                 }
 
@@ -146,17 +137,6 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
             List<Tuple<DateTime, string>> items = null;
             try
             {
-                items = _queue.GetRange(0, count);
-                await _lock.WaitAsync();
-                try
-                {
-                    _queue.RemoveRange(0, count);
-                }
-                finally
-                {
-                    _lock.Release();
-                }
-
                 byte[] bytes = null;
                 int i;
                 for (i = items.Count; i >= 0; --i)
@@ -172,24 +152,34 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
                         break;
                 }
                 if (i == 0)
-                    await _log.WriteErrorAsync(
-                        "BlobSaver.SaveQueueAsync."+_containerName,
-                        items[0].Item2,
-                        new InvalidOperationException("Could not append new block. Item is too large!"));
-                var stream = new MemoryStream(bytes);
-                await blob.AppendBlockAsync(stream);
-                if (i < items.Count)
                 {
+                    await _log.WriteErrorAsync(
+                        "BlobSaver.SaveQueueAsync." + _containerName,
+                        _queue[0].Item2,
+                        new InvalidOperationException("Could not append new block. Item is too large!"));
                     await _lock.WaitAsync();
                     try
                     {
-                        var notSaved = items.GetRange(i, items.Count - i);
-                        _queue.InsertRange(0, notSaved);
+                        _queue.RemoveAt(0);
                     }
                     finally
                     {
                         _lock.Release();
                     }
+                    return;
+                }
+                using (var stream = new MemoryStream(bytes))
+                {
+                    await blob.AppendBlockAsync(stream);
+                }
+                await _lock.WaitAsync();
+                try
+                {
+                    _queue.RemoveRange(0, i);
+                }
+                finally
+                {
+                    _lock.Release();
                 }
             }
             catch (Exception exc)
@@ -212,7 +202,7 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
                     (blob?.Uri != null ? blob.Uri.ToString() : ""),
                     exc);
 
-                await Task.Delay(TimeSpan.FromSeconds(3));
+                await Task.Delay(_delay);
             }
         }
 
