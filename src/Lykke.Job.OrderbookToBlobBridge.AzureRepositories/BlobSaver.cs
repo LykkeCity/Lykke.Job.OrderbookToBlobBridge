@@ -134,17 +134,16 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
 
         private async Task SaveQueueAsync(CloudAppendBlob blob, int count)
         {
-            List<Tuple<DateTime, string>> items = null;
             try
             {
                 byte[] bytes = null;
                 int i;
-                for (i = items.Count; i >= 0; --i)
+                for (i = count; i >= 0; --i)
                 {
                     StringBuilder strBuilder = new StringBuilder();
                     for (int j = 0; j < i; j++)
                     {
-                        strBuilder.AppendLine(items[j].Item2);
+                        strBuilder.AppendLine(_queue[j].Item2);
                     }
                     string text = strBuilder.ToString();
                     bytes = Encoding.UTF8.GetBytes(text);
@@ -184,24 +183,10 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
             }
             catch (Exception exc)
             {
-                if (items != null)
-                {
-                    await _lock.WaitAsync();
-                    try
-                    {
-                        _queue.InsertRange(0, items);
-                    }
-                    finally
-                    {
-                        _lock.Release();
-                    }
-                }
-
                 await _log.WriteErrorAsync(
                     "BlobSaver.ProcessQueue",
                     (blob?.Uri != null ? blob.Uri.ToString() : ""),
                     exc);
-
                 await Task.Delay(_delay);
             }
         }
