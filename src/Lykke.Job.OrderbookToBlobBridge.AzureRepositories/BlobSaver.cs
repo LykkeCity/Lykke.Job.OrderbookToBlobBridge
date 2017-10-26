@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Linq;
 using System.Text;
 using System.IO;
 using System.Collections.Generic;
@@ -22,6 +21,7 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
         private readonly SemaphoreSlim _lock = new SemaphoreSlim(1, 1);
         private readonly int _maxInBatch;
         private DateTime _lastDay = DateTime.MinValue;
+        private DateTime _lastWarning = DateTime.MinValue;
         private volatile bool _mustStop;
 
         public BlobSaver(
@@ -51,11 +51,18 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
             {
                 _lock.Release();
             }
-            if (count > _warningQueueCount)
+            if (count <= _warningQueueCount)
+                return;
+
+            var now = DateTime.UtcNow;
+            if (now.Subtract(_lastWarning) >= TimeSpan.FromMinutes(1))
+            {
+                _lastWarning = now;
                 await _log.WriteWarningAsync(
                     "BlobSaver.SaveDataItemAsync",
                     _containerName,
                     $"{count} items in saving queue (> {_warningQueueCount})!");
+            }
         }
 
         public void Stop()
