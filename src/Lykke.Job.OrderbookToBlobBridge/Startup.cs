@@ -57,10 +57,6 @@ namespace Lykke.Job.OrderbookToBlobBridge
 
                 var builder = new ContainerBuilder();
                 var appSettings = Configuration.LoadSettings<AppSettings>();
-                var settingsOrderNumber = Configuration["OrderNumber"];
-                int orderNumber;
-                if (!int.TryParse(settingsOrderNumber, out orderNumber))
-                    throw new ArgumentException("Incorrect OrderNumber environment variable!");
 
                 _log = CreateLogWithSlack(services, appSettings);
 
@@ -68,7 +64,6 @@ namespace Lykke.Job.OrderbookToBlobBridge
                     new JobModule(
                         appSettings.CurrentValue.OrderbookToBlobBridgeJob,
                         appSettings.Nested(x => x.OrderbookToBlobBridgeJob),
-                        orderNumber,
                         _consoleLog,
                         _log));
 

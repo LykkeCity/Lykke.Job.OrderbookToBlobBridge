@@ -1,6 +1,4 @@
-﻿using System.Collections.Generic;
-
-namespace Lykke.Job.OrderbookToBlobBridge.Core.Settings
+﻿namespace Lykke.Job.OrderbookToBlobBridge.Core.Settings
 {
     public class AppSettings
     {
@@ -30,11 +28,8 @@ namespace Lykke.Job.OrderbookToBlobBridge.Core.Settings
     {
         public string LogsConnectionString { get; set; }
 
-        public List<OrderBookSettings> OrderbookStreams { get; set; }
-    }
+        public string LogsTableName { get; set; }
 
-    public class OrderBookSettings
-    {
         public string RabbitMqConnectionString { get; set; }
 
         public string ExchangeName { get; set; }

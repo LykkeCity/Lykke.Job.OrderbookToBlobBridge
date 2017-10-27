@@ -12,7 +12,6 @@ namespace Lykke.Job.OrderbookToBlobBridge.Modules
     public class JobModule : Module
     {
         private readonly OrderbookToBlobBridgeSettings _settings;
-        private readonly int _orderNumber;
         private readonly IReloadingManager<OrderbookToBlobBridgeSettings> _settingsManager;
         private readonly ILog _log;
         private readonly IConsole _console;
@@ -20,13 +19,11 @@ namespace Lykke.Job.OrderbookToBlobBridge.Modules
         public JobModule(
             OrderbookToBlobBridgeSettings settings,
             IReloadingManager<OrderbookToBlobBridgeSettings> settingsManager,
-            int orderNumber,
             IConsole console,
             ILog log)
         {
             _settings = settings;
             _log = log;
-            _orderNumber = orderNumber;
             _console = console;
             _settingsManager = settingsManager;
         }
@@ -47,14 +44,12 @@ namespace Lykke.Job.OrderbookToBlobBridge.Modules
             builder.RegisterType<ShutdownManager>()
                 .As<IShutdownManager>();
 
-            var orderbookStream = _settings.OrderbookStreams[_orderNumber];
-
             var subscriber = new OrderbookSubscriber(
-                orderbookStream.RabbitMqConnectionString,
-                orderbookStream.ExchangeName,
-                orderbookStream.MaxBatchCount,
-                orderbookStream.MinBatchCount,
-                orderbookStream.OutputBlobConnectionString,
+                _settings.RabbitMqConnectionString,
+                _settings.ExchangeName,
+                _settings.MaxBatchCount,
+                _settings.MinBatchCount,
+                _settings.OutputBlobConnectionString,
                 _console,
                 _log);
             builder.RegisterInstance(subscriber)
