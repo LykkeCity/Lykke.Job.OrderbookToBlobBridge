@@ -26,6 +26,7 @@ namespace Lykke.Job.OrderbookToBlobBridge.Modules
         {
             _settings = settings;
             _log = log;
+            _orderNumber = orderNumber;
             _console = console;
             _settingsManager = settingsManager;
         }
