@@ -136,20 +136,15 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
         {
             try
             {
-                byte[] bytes = null;
                 int i;
-                for (i = count; i >= 0; --i)
+                int allLength = 0;
+                for (i = 0; i < count; ++i)
                 {
-                    StringBuilder strBuilder = new StringBuilder();
-                    for (int j = 0; j < i; j++)
-                    {
-                        strBuilder.AppendLine(_queue[j].Item2);
-                    }
-                    string text = strBuilder.ToString();
-                    bytes = Encoding.UTF8.GetBytes(text);
-                    if (bytes.Length <= _maxBlockSize)
+                    allLength += 2 + _queue[i].Item2.Length;
+                    if (allLength > _maxBlockSize)
                         break;
                 }
+
                 if (i == 0)
                 {
                     await _log.WriteErrorAsync(
@@ -167,10 +162,21 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
                     }
                     return;
                 }
-                using (var stream = new MemoryStream(bytes))
+
+                using (var stream = new MemoryStream())
                 {
+                    using (var writer = new StreamWriter(stream))
+                    {
+                        for (int j = 0; j < i; j++)
+                        {
+                            writer.WriteLine(_queue[j].Item2);
+                        }
+                        writer.Flush();
+                    }
+                    stream.Position = 0;
                     await blob.AppendBlockAsync(stream);
                 }
+
                 await _lock.WaitAsync();
                 try
                 {
