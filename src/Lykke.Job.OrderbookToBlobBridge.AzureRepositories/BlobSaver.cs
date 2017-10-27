@@ -14,6 +14,7 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
     {
         private const int _warningQueueCount = 1000;
         private const int _maxBlockSize = 4 * 1024 * 1024; // 4 Mb
+        private const int _minBatchCount = 100;
         private readonly ILog _log;
         private readonly string _containerName;
         private readonly CloudStorageAccount _storageAccount;
@@ -113,6 +114,9 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
 
                 if (count == 0)
                     continue;
+
+                if (!_mustStop && count == itemsCount && count < _minBatchCount)
+                    await Task.Delay(_delay);
 
                 if (blob == null)
                 {
