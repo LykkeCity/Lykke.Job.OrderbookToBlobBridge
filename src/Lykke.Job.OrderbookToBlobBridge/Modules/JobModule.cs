@@ -52,7 +52,8 @@ namespace Lykke.Job.OrderbookToBlobBridge.Modules
             var subscriber = new OrderbookSubscriber(
                 orderbookStream.RabbitMqConnectionString,
                 orderbookStream.ExchangeName,
-                _settings.BatchCount,
+                orderbookStream.MaxBatchCount,
+                orderbookStream.MinBatchCount,
                 orderbookStream.OutputBlobConnectionString,
                 _console,
                 _log);

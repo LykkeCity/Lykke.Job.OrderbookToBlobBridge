@@ -14,13 +14,13 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
     {
         private const int _warningQueueCount = 1000;
         private const int _maxBlockSize = 4 * 1024 * 1024; // 4 Mb
-        private const int _minBatchCount = 100;
         private readonly ILog _log;
         private readonly string _containerName;
         private readonly CloudStorageAccount _storageAccount;
         private readonly List<Tuple<DateTime, string>> _queue = new List<Tuple<DateTime, string>>();
         private readonly SemaphoreSlim _lock = new SemaphoreSlim(1, 1);
         private readonly int _maxInBatch;
+        private readonly int _minBatchCount;
         private readonly TimeSpan _delay = TimeSpan.FromMilliseconds(100);
         private DateTime _lastDay = DateTime.MinValue;
         private DateTime _lastWarning = DateTime.MinValue;
@@ -29,11 +29,13 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
         public BlobSaver(
             CloudStorageAccount storageAccount,
             string containerName,
-            int batchCount,
+            int maxBatchCount,
+            int minBatchCount,
             ILog log)
         {
             _containerName = containerName.Replace('.', '-').ToLower();
-            _maxInBatch = batchCount > 0 ? batchCount : 1000;
+            _maxInBatch = maxBatchCount > 0 ? maxBatchCount : 1000;
+            _minBatchCount = minBatchCount > 0 ? minBatchCount : 10;
             _log = log;
             _storageAccount = storageAccount;
 

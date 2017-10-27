@@ -30,8 +30,6 @@ namespace Lykke.Job.OrderbookToBlobBridge.Core.Settings
     {
         public string LogsConnectionString { get; set; }
 
-        public int BatchCount { get; set; }
-
         public List<OrderBookSettings> OrderbookStreams { get; set; }
     }
 
@@ -42,5 +40,9 @@ namespace Lykke.Job.OrderbookToBlobBridge.Core.Settings
         public string ExchangeName { get; set; }
 
         public string OutputBlobConnectionString { get; set; }
+
+        public int MaxBatchCount { get; set; }
+
+        public int MinBatchCount { get; set; }
     }
 }

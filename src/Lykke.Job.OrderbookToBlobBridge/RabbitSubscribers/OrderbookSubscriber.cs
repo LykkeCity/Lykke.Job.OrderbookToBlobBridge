@@ -17,7 +17,8 @@ namespace Lykke.Job.OrderbookToBlobBridge.RabbitSubscribers
     {
         private readonly string _rabbitMqConnectionString;
         private readonly string _exchangeName;
-        private readonly int _batchCount;
+        private readonly int _maxBatchCount;
+        private readonly int _minBatchCount;
         private readonly CloudStorageAccount _storageAccount;
         private readonly IConsole _console;
         private readonly ILog _log;
@@ -29,14 +30,16 @@ namespace Lykke.Job.OrderbookToBlobBridge.RabbitSubscribers
         public OrderbookSubscriber(
             string rabbitMqConnectionString,
             string exchangeName,
-            int batchCount,
+            int maxBatchCount,
+            int minBatchCount,
             string blobStorageConnectionString,
             IConsole console,
             ILog log)
         {
             _rabbitMqConnectionString = rabbitMqConnectionString;
             _exchangeName = exchangeName;
-            _batchCount = batchCount;
+            _maxBatchCount = maxBatchCount;
+            _minBatchCount = minBatchCount;
             _storageAccount = CloudStorageAccount.Parse(blobStorageConnectionString);
             _console = console;
             _log = log;
@@ -100,7 +103,12 @@ namespace Lykke.Job.OrderbookToBlobBridge.RabbitSubscribers
         {
             string containerName = GetContainerName(item, isAsk);
             if (!_dict.ContainsKey(containerName))
-                _dict.TryAdd(containerName, new BlobSaver(_storageAccount, containerName, _batchCount, _log));
+                _dict.TryAdd(containerName, new BlobSaver(
+                    _storageAccount,
+                    containerName,
+                    _maxBatchCount,
+                    _minBatchCount,
+                    _log));
             string itemStr = GetItemSring(item, isAsk);
             await _dict[containerName].SaveDataItemAsync(itemStr);
         }
