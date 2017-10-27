@@ -32,6 +32,11 @@ namespace Lykke.Job.OrderbookToBlobBridge.Core.Settings
 
         public int BatchCount { get; set; }
 
+        public List<OrderBookSettings> OrderbookStreams { get; set; }
+    }
+
+    public class OrderBookSettings
+    {
         public string RabbitMqConnectionString { get; set; }
 
         public string ExchangeName { get; set; }
