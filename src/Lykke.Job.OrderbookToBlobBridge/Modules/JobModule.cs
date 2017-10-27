@@ -7,7 +7,6 @@ using Lykke.Job.OrderbookToBlobBridge.Services;
 using Lykke.Job.OrderbookToBlobBridge.Core.Settings;
 using Lykke.Job.OrderbookToBlobBridge.RabbitSubscribers;
 
-
 namespace Lykke.Job.OrderbookToBlobBridge.Modules
 {
     public class JobModule : Module
@@ -44,24 +43,17 @@ namespace Lykke.Job.OrderbookToBlobBridge.Modules
 
             builder.RegisterType<ShutdownManager>()
                 .As<IShutdownManager>();
-            RegisterRabbitMqSubscribers(builder);
-        }
 
-        private void RegisterRabbitMqSubscribers(ContainerBuilder builder)
-        {
-            foreach (var orderbookStream in _settings.OrderbookStreams)
-            {
-                var subscriber = new OrderbookSubscriber(
-                    orderbookStream.RabbitMqConnectionString,
-                    orderbookStream.ExchangeName,
-                    _settings.BatchCount,
-                    orderbookStream.OutputBlobConnectionString,
-                    _console,
-                    _log);
-                builder.RegisterInstance(subscriber)
-                    .As<IStartable>()
-                    .As<IStopable>();
-            }
+            var subscriber = new OrderbookSubscriber(
+                _settings.RabbitMqConnectionString,
+                _settings.ExchangeName,
+                _settings.BatchCount,
+                _settings.OutputBlobConnectionString,
+                _console,
+                _log);
+            builder.RegisterInstance(subscriber)
+                .As<IStartable>()
+                .As<IStopable>();
         }
     }
 }
