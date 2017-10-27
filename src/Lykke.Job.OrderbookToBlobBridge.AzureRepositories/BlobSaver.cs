@@ -163,17 +163,14 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
                     return;
                 }
 
-                using (var stream = new MemoryStream())
+                var strBuilder = new StringBuilder();
+                for (int j = 0; j < i; j++)
                 {
-                    using (var writer = new StreamWriter(stream))
-                    {
-                        for (int j = 0; j < i; j++)
-                        {
-                            writer.WriteLine(_queue[j].Item2);
-                        }
-                        writer.Flush();
-                    }
-                    stream.Position = 0;
+                    strBuilder.AppendLine(_queue[j].Item2);
+                }
+                var bytes = Encoding.UTF8.GetBytes(strBuilder.ToString());
+                using (var stream = new MemoryStream(bytes))
+                {
                     await blob.AppendBlockAsync(stream);
                 }
 
