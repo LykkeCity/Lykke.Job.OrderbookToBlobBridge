@@ -12,6 +12,7 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
 {
     public class BlobSaver
     {
+        private const string _timeFormat = "yyyy-MM-dd-HH";
         private const int _warningQueueCount = 1000;
         private const int _maxBlockSize = 4 * 1024 * 1024; // 4 Mb
         private readonly ILog _log;
@@ -25,6 +26,7 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
         private DateTime _lastDay = DateTime.MinValue;
         private DateTime _lastWarning = DateTime.MinValue;
         private volatile bool _mustStop;
+        private CloudAppendBlob _blob;
 
         public BlobSaver(
             CloudStorageAccount storageAccount,
@@ -78,128 +80,133 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
 
         private async void ProcessQueue(object state)
         {
-            var containerRef = GetContainerReference();
-            if (!(await containerRef.ExistsAsync()))
-                await containerRef.CreateAsync(BlobContainerPublicAccessType.Off, null, null);
-
-            CloudAppendBlob blob = null;
+            while (true)
+            {
+                try
+                {
+                    var containerRef = GetContainerReference();
+                    if (!(await containerRef.ExistsAsync()))
+                        await containerRef.CreateAsync(BlobContainerPublicAccessType.Off, null, null);
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    await _log.WriteErrorAsync("BlobSaver.ProcessQueue", _containerName, ex);
+                }
+            }
 
             while (true)
             {
-                int itemsCount = _queue.Count;
-                if (itemsCount == 0)
+                try
                 {
-                    if (!_mustStop)
-                        await Task.Delay(_delay);
-                    continue;
+                    await ProcessQueueAsync();
                 }
-
-                Tuple<DateTime, string> pair;
-                int count = 0;
-                while (count <= _maxInBatch && count < itemsCount)
+                catch (Exception ex)
                 {
-                    pair = _queue[count];
-                    if (pair.Item1.Hour != _lastDay.Hour)
-                    {
-                        if (count == 0)
-                        {
-                            _lastDay = pair.Item1;
-                            blob = null;
-                        }
-                        else
-                        {
-                            break;
-                        }
-                    }
-                    ++count;
+                    await _log.WriteErrorAsync(
+                        "BlobSaver.ProcessQueue",
+                        _blob?.Uri != null ? _blob.Uri.ToString() : "",
+                        ex);
                 }
-
-                if (count == 0)
-                    continue;
-
-                if (!_mustStop && count == itemsCount && count < _minBatchCount)
-                    await Task.Delay(_delay);
-
-                if (blob == null)
-                {
-                    try
-                    {
-                        string blobKey = _queue[0].Item1.ToString("yyyy-MM-dd-HH");
-                        blob = await GetWriteBlobAsync(blobKey);
-                    }
-                    catch (Exception exc)
-                    {
-                        await _log.WriteErrorAsync("BlobSaver.ProcessQueue", _containerName, exc);
-                        continue;
-                    }
-                }
-
-                await SaveQueueAsync(blob, count);
             }
         }
 
-        private async Task SaveQueueAsync(CloudAppendBlob blob, int count)
+        private async Task ProcessQueueAsync()
         {
-            try
+            int itemsCount = _queue.Count;
+            if (itemsCount == 0)
             {
-                int i;
-                int allLength = 0;
-                for (i = 0; i < count; ++i)
+                if (!_mustStop)
+                    await Task.Delay(_delay);
+                return;
+            }
+
+            Tuple<DateTime, string> pair;
+            int count = 0;
+            while (count <= _maxInBatch && count < itemsCount)
+            {
+                pair = _queue[count];
+                if (pair.Item1.Hour != _lastDay.Hour)
                 {
-                    allLength += 2 + _queue[i].Item2.Length;
-                    if (allLength > _maxBlockSize)
+                    if (count == 0)
+                    {
+                        _lastDay = pair.Item1;
+                        _blob = null;
+                    }
+                    else
+                    {
                         break;
-                }
-
-                if (i == 0)
-                {
-                    await _log.WriteErrorAsync(
-                        "BlobSaver.SaveQueueAsync." + _containerName,
-                        _queue[0].Item2,
-                        new InvalidOperationException("Could not append new block. Item is too large!"));
-                    await _lock.WaitAsync();
-                    try
-                    {
-                        _queue.RemoveAt(0);
-                    }
-                    finally
-                    {
-                        _lock.Release();
-                    }
-                    return;
-                }
-
-                using (var stream = new MemoryStream())
-                {
-                    using (var writer = new StreamWriter(stream))
-                    {
-                        for (int j = 0; j < i; j++)
-                        {
-                            writer.WriteLine(_queue[j].Item2);
-                        }
-                        writer.Flush();
-                        stream.Position = 0;
-                        await blob.AppendBlockAsync(stream);
                     }
                 }
+                ++count;
+            }
 
+            if (count == 0)
+                return;
+
+            if (!_mustStop && count == itemsCount && count < _minBatchCount)
+                await Task.Delay(_delay);
+
+            if (_blob == null)
+            {
+                string blobKey = _queue[0].Item1.ToString(_timeFormat);
+                _blob = await GetWriteBlobAsync(blobKey);
+            }
+
+            await SaveQueueAsync(count);
+        }
+
+        private async Task SaveQueueAsync(int count)
+        {
+            int i;
+            int allLength = 0;
+            for (i = 0; i < count; ++i)
+            {
+                allLength += 2 + _queue[i].Item2.Length;
+                if (allLength > _maxBlockSize)
+                    break;
+            }
+
+            if (i == 0)
+            {
+                await _log.WriteErrorAsync(
+                    "BlobSaver.SaveQueueAsync." + _containerName,
+                    _queue[0].Item2,
+                    new InvalidOperationException("Could not append new block. Item is too large!"));
                 await _lock.WaitAsync();
                 try
                 {
-                    _queue.RemoveRange(0, i);
+                    _queue.RemoveAt(0);
                 }
                 finally
                 {
                     _lock.Release();
                 }
+                return;
             }
-            catch (Exception exc)
+
+            using (var stream = new MemoryStream())
             {
-                await _log.WriteErrorAsync(
-                    "BlobSaver.ProcessQueue",
-                    (blob?.Uri != null ? blob.Uri.ToString() : ""),
-                    exc);
-                await Task.Delay(_delay);
+                using (var writer = new StreamWriter(stream))
+                {
+                    for (int j = 0; j < i; j++)
+                    {
+                        writer.WriteLine(_queue[j].Item2);
+                    }
+                    writer.Flush();
+                    stream.Position = 0;
+                    await _blob.AppendBlockAsync(stream);
+                }
+            }
+
+            await _lock.WaitAsync();
+            try
+            {
+                _queue.RemoveRange(0, i);
+            }
+            finally
+            {
+                _lock.Release();
             }
         }
 
