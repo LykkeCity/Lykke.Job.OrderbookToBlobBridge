@@ -80,6 +80,8 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
 
         private async void ProcessQueue(object state)
         {
+            await _log.WriteInfoAsync("BlobSaver.ProcessQueue", _containerName, "Processing started");
+
             while (true)
             {
                 try
