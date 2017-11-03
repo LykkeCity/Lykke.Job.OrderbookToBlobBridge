@@ -116,7 +116,7 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
         private async Task ProcessQueueAsync()
         {
             int itemsCount = _queue.Count;
-            if (itemsCount == 0)
+            if (itemsCount == 0 || itemsCount < _minBatchCount)
             {
                 if (!_mustStop)
                     await Task.Delay(_delay);
@@ -125,7 +125,7 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
 
             Tuple<DateTime, string> pair;
             int count = 0;
-            while (count <= _maxInBatch && count < itemsCount)
+            while (count < _maxInBatch && count < itemsCount)
             {
                 pair = _queue[count];
                 if (pair.Item1.Hour != _lastDay.Hour)
@@ -145,15 +145,6 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
 
             if (count == 0)
                 return;
-
-            if (!_mustStop && count == itemsCount && count < _minBatchCount)
-                await Task.Delay(_delay);
-
-            if (_blob == null)
-            {
-                string blobKey = _queue[0].Item1.ToString(_timeFormat);
-                _blob = await GetWriteBlobAsync(blobKey);
-            }
 
             await SaveQueueAsync(count);
         }
@@ -185,6 +176,12 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
                     _lock.Release();
                 }
                 return;
+            }
+
+            if (_blob == null)
+            {
+                string blobKey = _queue[0].Item1.ToString(_timeFormat);
+                _blob = await GetWriteBlobAsync(blobKey);
             }
 
             using (var stream = new MemoryStream())
