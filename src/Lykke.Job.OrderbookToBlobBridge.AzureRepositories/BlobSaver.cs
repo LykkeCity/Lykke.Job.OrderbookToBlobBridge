@@ -123,6 +123,9 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
                 return;
             }
 
+            if (_queue.Count > _warningQueueCount)
+                await _log.WriteInfoAsync("BlobSaver.ProcessQueueAsync", _containerName, $"BeforeCount - {itemsCount}");
+
             Tuple<DateTime, string> pair;
             int count = 0;
             while (count < _maxInBatch && count < itemsCount)
@@ -143,6 +146,9 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
                 ++count;
             }
 
+            if (_queue.Count > _warningQueueCount)
+                await _log.WriteInfoAsync("BlobSaver.ProcessQueueAsync", _containerName, $"AfterCount - {count}");
+
             if (count == 0)
                 return;
 
@@ -151,6 +157,9 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
 
         private async Task SaveQueueAsync(int count)
         {
+            if (_queue.Count > _warningQueueCount)
+                await _log.WriteInfoAsync("BlobSaver.SaveQueueAsync", _containerName, $"BeforeCount - {count}");
+
             int i;
             int allLength = 0;
             for (i = 0; i < count; ++i)
@@ -159,6 +168,9 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
                 if (allLength > _maxBlockSize)
                     break;
             }
+
+            if (_queue.Count > _warningQueueCount)
+                await _log.WriteInfoAsync("BlobSaver.SaveQueueAsync", _containerName, $"AfterCount - {i}");
 
             if (i == 0)
             {
