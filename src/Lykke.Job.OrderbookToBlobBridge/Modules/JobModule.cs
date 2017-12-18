@@ -39,10 +39,13 @@ namespace Lykke.Job.OrderbookToBlobBridge.Modules
                 .SingleInstance();
 
             builder.RegisterType<StartupManager>()
-                .As<IStartupManager>();
+                .As<IStartupManager>()
+                .SingleInstance();
 
-            builder.RegisterType<ShutdownManager>()
-                .As<IShutdownManager>();
+            var shutdownManager = new ShutdownManager(_log);
+            builder.RegisterInstance(shutdownManager)
+                .As<IShutdownManager>()
+                .SingleInstance();
 
             var subscriber = new OrderbookSubscriber(
                 _settings.RabbitMqConnectionString,
@@ -55,6 +58,7 @@ namespace Lykke.Job.OrderbookToBlobBridge.Modules
             builder.RegisterInstance(subscriber)
                 .As<IStartable>()
                 .As<IStopable>();
+            shutdownManager.Add(subscriber);
         }
     }
 }

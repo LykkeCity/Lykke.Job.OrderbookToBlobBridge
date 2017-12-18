@@ -2,6 +2,7 @@
 using System.Text;
 using System.IO;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.WindowsAzure.Storage;
@@ -17,16 +18,24 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
         private const int _maxBlockSize = 4 * 1024 * 1024; // 4 Mb
         private readonly ILog _log;
         private readonly string _containerName;
-        private readonly CloudStorageAccount _storageAccount;
+        private readonly CloudBlobClient _blobClient;
         private readonly List<Tuple<DateTime, string>> _queue = new List<Tuple<DateTime, string>>();
         private readonly SemaphoreSlim _lock = new SemaphoreSlim(1, 1);
         private readonly int _maxInBatch;
         private readonly int _minBatchCount;
         private readonly TimeSpan _delay = TimeSpan.FromMilliseconds(100);
+        private readonly BlobRequestOptions _blobRequestOptions = new BlobRequestOptions
+        {
+            MaximumExecutionTime = TimeSpan.FromMinutes(10),
+        };
+
         private DateTime _lastDay = DateTime.MinValue;
         private DateTime _lastWarning = DateTime.MinValue;
         private volatile bool _mustStop;
         private CloudAppendBlob _blob;
+        private CloudAppendBlob _restartBlob;
+
+        public const string RestartContainer = "orderbook-to-blob-bridge-restart";
 
         public BlobSaver(
             CloudStorageAccount storageAccount,
@@ -39,7 +48,7 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
             _maxInBatch = maxBatchCount > 0 ? maxBatchCount : 1000;
             _minBatchCount = minBatchCount > 0 ? minBatchCount : 10;
             _log = log;
-            _storageAccount = storageAccount;
+            _blobClient = storageAccount.CreateCloudBlobClient();
 
             ThreadPool.QueueUserWorkItem(ProcessQueue);
         }
@@ -74,21 +83,57 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
         public void Stop()
         {
             _mustStop = true;
-            while (_queue.Count > 0)
-                Thread.Sleep(1000);
+            if (_restartBlob != null)
+            {
+                try
+                {
+                    SaveToBlobAsync(_restartBlob, _queue.Count, true).Wait();
+                }
+                catch (Exception ex)
+                {
+                    _log.WriteErrorAsync(
+                        "BlobSaver.Stop." + _containerName,
+                        _restartBlob?.Uri != null ? _restartBlob.Uri.ToString() : "",
+                        ex).Wait();
+                }
+            }
         }
 
         private async void ProcessQueue(object state)
         {
-            await _log.WriteInfoAsync("BlobSaver.ProcessQueue", _containerName, "Processing started");
-
             while (true)
             {
                 try
                 {
-                    var containerRef = GetContainerReference();
+                    _restartBlob = await GetWriteBlobAsync(RestartContainer, _containerName);
+                    string allData = await _restartBlob.DownloadTextAsync();
+                    if (!string.IsNullOrWhiteSpace(allData))
+                    {
+                        var items = allData.Split(Environment.NewLine);
+                        var list = new List<Tuple<DateTime, string>>();
+                        for (int i = 0; i < items.Length; i += 2)
+                        {
+                            bool dateParsed = DateTime.TryParseExact(
+                                items[i].Trim(),
+                                _timeFormat,
+                                CultureInfo.InvariantCulture,
+                                DateTimeStyles.AssumeUniversal,
+                                out DateTime date);
+                            if (!dateParsed)
+                                continue;
+                            list.Add(new Tuple<DateTime, string>(date, items[i + 1]));
+                        }
+                        _queue.InsertRange(0, list);
+
+                        await _log.WriteInfoAsync("BlobSaver.ProcessQueue", _containerName, $"Loaded {list.Count} items");
+                    }
+
+                    var containerRef = _blobClient.GetContainerReference(_containerName);
                     if (!(await containerRef.ExistsAsync()))
+                    {
                         await containerRef.CreateAsync(BlobContainerPublicAccessType.Off, null, null);
+                        await _log.WriteInfoAsync("BlobSaver.ProcessQueue", _containerName, "Container was created");
+                    }
                     break;
                 }
                 catch (Exception ex)
@@ -96,6 +141,8 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
                     await _log.WriteErrorAsync("BlobSaver.ProcessQueue", _containerName, ex);
                 }
             }
+
+            await _log.WriteInfoAsync("BlobSaver.ProcessQueue", _containerName, "Processing started");
 
             while (true)
             {
@@ -116,6 +163,11 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
         private async Task ProcessQueueAsync()
         {
             int itemsCount = _queue.Count;
+            if (_queue.Count > _warningQueueCount)
+                await _log.WriteInfoAsync(
+                    "BlobSaver.ProcessQueueAsync." + _containerName,
+                    _blob?.Uri != null ? _blob.Uri.ToString() : "",
+                    $"{itemsCount} items in queue");
             if (itemsCount == 0 || itemsCount < _minBatchCount)
             {
                 if (!_mustStop)
@@ -193,43 +245,73 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
             if (_blob == null)
             {
                 string blobKey = _queue[0].Item1.ToString(_timeFormat);
-                _blob = await GetWriteBlobAsync(blobKey);
+                _blob = await GetWriteBlobAsync(_containerName, blobKey);
+
+                if (_queue.Count > _warningQueueCount)
+                    await _log.WriteInfoAsync(
+                        "BlobSaver.SaveQueueAsync." + _containerName,
+                        _blob?.Uri != null ? _blob.Uri.ToString() : "",
+                        "Blob was recreated");
             }
 
+            await SaveToBlobAsync(_blob, i, false);
+        }
+
+        private async Task SaveToBlobAsync(CloudAppendBlob blob, int count, bool withDates)
+        {
             using (var stream = new MemoryStream())
             {
                 using (var writer = new StreamWriter(stream))
                 {
-                    for (int j = 0; j < i; j++)
+                    for (int j = 0; j < count; j++)
                     {
+                        if (withDates)
+                            writer.WriteLine(_queue[j].Item1.ToString(_timeFormat));
                         writer.WriteLine(_queue[j].Item2);
                     }
                     writer.Flush();
                     stream.Position = 0;
-                    await _blob.AppendBlockAsync(stream);
+                    await blob.AppendFromStreamAsync(stream, null, _blobRequestOptions, null);
                 }
             }
 
-            await _lock.WaitAsync();
-            try
+            if (_queue.Count > _warningQueueCount)
+                await _log.WriteInfoAsync(
+                    "BlobSaver.SaveToBlobAsync." + _containerName,
+                    blob?.Uri != null ? blob.Uri.ToString() : "",
+                    "Items were saved to blob");
+
+            bool isLocked = await _lock.WaitAsync(TimeSpan.FromSeconds(1));
+            if (isLocked)
             {
-                _queue.RemoveRange(0, i);
+                try
+                {
+                    _queue.RemoveRange(0, count);
+                }
+                finally
+                {
+                    _lock.Release();
+                }
             }
-            finally
+            else
             {
-                _lock.Release();
+                await _log.WriteWarningAsync(
+                    "BlobSaver.SaveToBlobAsync",
+                    _containerName,
+                    "Using unsafe queue clearing");
+                _queue.RemoveRange(0, count);
             }
+
+            if (_queue.Count > _warningQueueCount)
+                await _log.WriteInfoAsync(
+                    "BlobSaver.SaveToBlobAsync." + _containerName,
+                    blob?.Uri != null ? blob.Uri.ToString() : "",
+                    "Saved items were removed from queue");
         }
 
-        private CloudBlobContainer GetContainerReference()
+        private async Task<CloudAppendBlob> GetWriteBlobAsync(string containerName, string storagePath)
         {
-            var blobClient = _storageAccount.CreateCloudBlobClient();
-            return blobClient.GetContainerReference(_containerName);
-        }
-
-        private async Task<CloudAppendBlob> GetWriteBlobAsync(string storagePath)
-        {
-            var blobContainer = GetContainerReference();
+            var blobContainer = _blobClient.GetContainerReference(containerName);
             var blob = blobContainer.GetAppendBlobReference(storagePath);
             if (!(await blob.ExistsAsync()))
             {
@@ -238,7 +320,7 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
                     await blob.CreateOrReplaceAsync(AccessCondition.GenerateIfNotExistsCondition(), null, null);
                     blob.Properties.ContentType = "text/plain";
                     blob.Properties.ContentEncoding = Encoding.UTF8.WebName;
-                    await blob.SetPropertiesAsync();
+                    await blob.SetPropertiesAsync(null, _blobRequestOptions, null);
                 }
                 catch (StorageException)
                 {

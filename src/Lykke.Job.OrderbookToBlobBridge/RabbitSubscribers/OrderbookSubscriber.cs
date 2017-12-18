@@ -3,6 +3,7 @@ using System.Text;
 using System.Collections.Concurrent;
 using System.Threading.Tasks;
 using Microsoft.WindowsAzure.Storage;
+using Microsoft.WindowsAzure.Storage.Blob;
 using Autofac;
 using Common;
 using Common.Log;
@@ -43,6 +44,11 @@ namespace Lykke.Job.OrderbookToBlobBridge.RabbitSubscribers
             _storageAccount = CloudStorageAccount.Parse(blobStorageConnectionString);
             _console = console;
             _log = log;
+
+            var containerRef = _storageAccount.CreateCloudBlobClient().GetContainerReference(BlobSaver.RestartContainer);
+            bool containerExists = containerRef.ExistsAsync().Result;
+            if (!containerExists)
+                containerRef.CreateAsync(BlobContainerPublicAccessType.Off, null, null).Wait();
         }
 
         public void Start()

@@ -91,7 +91,10 @@ namespace Lykke.Job.OrderbookToBlobBridge
 
                 app.UseMvc();
                 app.UseSwagger();
-                app.UseSwaggerUi();
+                app.UseSwaggerUI(x =>
+                {
+                    x.SwaggerEndpoint("/swagger/v1/swagger.json", "v1");
+                });
                 app.UseStaticFiles();
 
                 appLifetime.ApplicationStarted.Register(() => StartApplication().Wait());
@@ -125,16 +128,12 @@ namespace Lykke.Job.OrderbookToBlobBridge
         {
             try
             {
-                // NOTE: Job still can recieve and process IsAlive requests here, so take care about it if you add logic here.
-
                 await ApplicationContainer.Resolve<IShutdownManager>().StopAsync();
             }
             catch (Exception ex)
             {
                 if (_log != null)
-                {
                     await _log.WriteFatalErrorAsync(nameof(Startup), nameof(StopApplication), "", ex);
-                }
                 throw;
             }
         }
@@ -143,13 +142,8 @@ namespace Lykke.Job.OrderbookToBlobBridge
         {
             try
             {
-                // NOTE: Job can't recieve and process IsAlive requests here, so you can destroy all resources
-                
                 if (_log != null)
-                {
                     await _log.WriteMonitorAsync("", "", "Terminating");
-                }
-                
                 ApplicationContainer.Dispose();
             }
             catch (Exception ex)

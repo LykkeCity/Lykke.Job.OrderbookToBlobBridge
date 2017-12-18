@@ -4,7 +4,7 @@ using System.Net;
 using Lykke.Job.OrderbookToBlobBridge.Core.Services;
 using Lykke.Job.OrderbookToBlobBridge.Models;
 using Microsoft.AspNetCore.Mvc;
-using Swashbuckle.SwaggerGen.Annotations;
+using Swashbuckle.AspNetCore.SwaggerGen;
 
 namespace Lykke.Job.OrderbookToBlobBridge.Controllers
 {
