@@ -271,7 +271,7 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
                     }
                     writer.Flush();
                     stream.Position = 0;
-                    await blob.AppendFromStreamAsync(stream, null, _blobRequestOptions, null);
+                    await blob.AppendBlockAsync(stream, null, null, _blobRequestOptions, null);
                 }
             }
 
