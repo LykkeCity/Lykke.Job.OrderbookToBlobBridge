@@ -183,7 +183,7 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
             while (count < _maxInBatch && count < itemsCount)
             {
                 pair = _queue[count];
-                if (pair.Item1.Hour != _lastDay.Hour)
+                if (pair.Item1.Date != _lastDay.Date || pair.Item1.Hour != _lastDay.Hour)
                 {
                     if (count == 0)
                     {
