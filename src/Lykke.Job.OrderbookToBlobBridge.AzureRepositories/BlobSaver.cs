@@ -29,9 +29,10 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
             MaximumExecutionTime = TimeSpan.FromMinutes(10),
         };
 
-        private DateTime _lastDay = DateTime.MinValue;
+        private DateTime? _lastDay;
         private DateTime _lastWarning = DateTime.MinValue;
         private volatile bool _mustStop;
+        private Thread _thread;
         private CloudAppendBlob _blob;
         private CloudAppendBlob _restartBlob;
 
@@ -50,7 +51,8 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
             _log = log;
             _blobClient = storageAccount.CreateCloudBlobClient();
 
-            ThreadPool.QueueUserWorkItem(ProcessQueue);
+            _thread = new Thread(ProcessQueue) { Name = "OrderbookToBlobBridgeLoop" };
+            _thread.Start();
         }
 
         public async Task SaveDataItemAsync(string item)
@@ -76,7 +78,7 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
                 await _log.WriteWarningAsync(
                     "BlobSaver.SaveDataItemAsync",
                     _containerName,
-                    $"{count} items in saving queue (> {_warningQueueCount})!");
+                    $"{count} items in saving queue (> {_warningQueueCount}) - thread status: {(_thread != null ? _thread.IsAlive.ToString() : "missing")}");
             }
         }
 
@@ -168,7 +170,7 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
                     "BlobSaver.ProcessQueueAsync." + _containerName,
                     _blob?.Uri != null ? _blob.Uri.ToString() : "",
                     $"{itemsCount} items in queue");
-            if (itemsCount == 0 || itemsCount < _minBatchCount)
+            if (itemsCount == 0 || itemsCount < _minBatchCount && _lastDay.HasValue && DateTime.UtcNow.Subtract(_lastDay.Value) < TimeSpan.FromHours(1))
             {
                 if (!_mustStop)
                     await Task.Delay(_delay);
@@ -183,7 +185,9 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
             while (count < _maxInBatch && count < itemsCount)
             {
                 pair = _queue[count];
-                if (pair.Item1.Date != _lastDay.Date || pair.Item1.Hour != _lastDay.Hour)
+                if (!_lastDay.HasValue)
+                    _lastDay = pair.Item1;
+                if (pair.Item1.Date != _lastDay.Value.Date || pair.Item1.Hour != _lastDay.Value.Hour)
                 {
                     if (count == 0)
                     {
