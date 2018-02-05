@@ -78,7 +78,7 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
                 await _log.WriteWarningAsync(
                     "BlobSaver.SaveDataItemAsync",
                     _containerName,
-                    $"{count} items in saving queue (> {_warningQueueCount}) - thread status: {(_thread != null ? _thread.IsAlive.ToString() : "missing")}");
+                    $"{count} items in saving queue (> {_warningQueueCount}) - thread status: {(_thread != null ? _thread.ThreadState.ToString() : "missing")}");
             }
         }
 
