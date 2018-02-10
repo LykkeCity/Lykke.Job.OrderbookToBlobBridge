@@ -177,9 +177,6 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
                 return;
             }
 
-            if (_queue.Count > _warningQueueCount)
-                await _log.WriteInfoAsync("BlobSaver.ProcessQueueAsync", _containerName, $"BeforeCount - {itemsCount}");
-
             Tuple<DateTime, string> pair;
             int count = 0;
             while (count < _maxInBatch && count < itemsCount)
@@ -202,9 +199,6 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
                 ++count;
             }
 
-            if (_queue.Count > _warningQueueCount)
-                await _log.WriteInfoAsync("BlobSaver.ProcessQueueAsync", _containerName, $"AfterCount - {count}");
-
             if (count == 0)
                 return;
 
@@ -213,9 +207,6 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
 
         private async Task SaveQueueAsync(int count)
         {
-            if (_queue.Count > _warningQueueCount)
-                await _log.WriteInfoAsync("BlobSaver.SaveQueueAsync", _containerName, $"BeforeCount - {count}");
-
             int i;
             int allLength = 0;
             for (i = 0; i < count; ++i)
@@ -224,9 +215,6 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
                 if (allLength > _maxBlockSize)
                     break;
             }
-
-            if (_queue.Count > _warningQueueCount)
-                await _log.WriteInfoAsync("BlobSaver.SaveQueueAsync", _containerName, $"AfterCount - {i}");
 
             if (i == 0)
             {
@@ -279,12 +267,6 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
                 }
             }
 
-            if (_queue.Count > _warningQueueCount)
-                await _log.WriteInfoAsync(
-                    "BlobSaver.SaveToBlobAsync." + _containerName,
-                    blob?.Uri != null ? blob.Uri.ToString() : "",
-                    "Items were saved to blob");
-
             bool isLocked = await _lock.WaitAsync(TimeSpan.FromSeconds(1));
             if (isLocked)
             {
@@ -310,7 +292,7 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
                 await _log.WriteInfoAsync(
                     "BlobSaver.SaveToBlobAsync." + _containerName,
                     blob?.Uri != null ? blob.Uri.ToString() : "",
-                    "Saved items were removed from queue");
+                    $"{count} items were saved and removed from queue");
         }
 
         private async Task<CloudAppendBlob> GetWriteBlobAsync(string containerName, string storagePath)

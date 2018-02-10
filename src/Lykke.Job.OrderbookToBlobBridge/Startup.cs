@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -11,10 +12,10 @@ using Common.Log;
 using Lykke.Common.ApiLibrary.Middleware;
 using Lykke.Common.ApiLibrary.Swagger;
 using Lykke.Logs;
+using Lykke.Logs.Slack;
 using Lykke.SettingsReader;
 using Lykke.SlackNotification.AzureQueue;
 using Lykke.Job.OrderbookToBlobBridge.Core.Services;
-using Lykke.Job.OrderbookToBlobBridge.Core.Settings;
 using Lykke.Job.OrderbookToBlobBridge.Models;
 using Lykke.Job.OrderbookToBlobBridge.Modules;
 
@@ -32,8 +33,6 @@ namespace Lykke.Job.OrderbookToBlobBridge
         {
             var builder = new ConfigurationBuilder()
                 .SetBasePath(env.ContentRootPath)
-                .AddJsonFile("appsettings.json")
-                .AddJsonFile($"appsettings.{env.EnvironmentName}.json", true)
                 .AddEnvironmentVariables();
 
             Configuration = builder.Build();
@@ -181,16 +180,20 @@ namespace Lykke.Job.OrderbookToBlobBridge
                     AzureTableStorage<LogEntity>.Create(dbLogConnectionStringManager, "OrderbookToBlobBridgeLogs", _consoleLog),
                     _consoleLog);
 
-                var slackNotificationsManager = new LykkeLogToAzureSlackNotificationsManager(slackService, _consoleLog);
+                var slackNotificationsManager = new LykkeLogToAzureSlackNotificationsManager(
+                    slackService,
+                    new HashSet<string> { LykkeLogToAzureStorage.ErrorType, LykkeLogToAzureStorage.FatalErrorType, LykkeLogToAzureStorage.MonitorType },
+                    _consoleLog);
 
                 var azureStorageLogger = new LykkeLogToAzureStorage(
                     persistenceManager,
                     slackNotificationsManager,
                     _consoleLog);
-
                 azureStorageLogger.Start();
-
                 aggregateLogger.AddLog(azureStorageLogger);
+
+                var logToSlack = LykkeLogToSlack.Create(slackService, "Bridges", LogLevel.Error | LogLevel.FatalError | LogLevel.Warning);
+                aggregateLogger.AddLog(logToSlack);
             }
 
             return aggregateLogger;

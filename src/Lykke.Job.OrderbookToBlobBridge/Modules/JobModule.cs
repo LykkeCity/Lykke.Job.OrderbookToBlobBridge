@@ -4,7 +4,6 @@ using Common.Log;
 using Lykke.SettingsReader;
 using Lykke.Job.OrderbookToBlobBridge.Core.Services;
 using Lykke.Job.OrderbookToBlobBridge.Services;
-using Lykke.Job.OrderbookToBlobBridge.Core.Settings;
 using Lykke.Job.OrderbookToBlobBridge.RabbitSubscribers;
 
 namespace Lykke.Job.OrderbookToBlobBridge.Modules

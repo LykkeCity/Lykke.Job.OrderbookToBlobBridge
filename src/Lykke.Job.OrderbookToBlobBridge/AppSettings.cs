@@ -1,4 +1,6 @@
-﻿namespace Lykke.Job.OrderbookToBlobBridge.Core.Settings
+﻿using Lykke.SettingsReader.Attributes;
+
+namespace Lykke.Job.OrderbookToBlobBridge
 {
     public class AppSettings
     {
@@ -19,21 +21,19 @@
         public string QueueName { get; set; }
     }
 
-    public class DbSettings
-    {
-        public string LogsConnString { get; set; }
-    }
-
     public class OrderbookToBlobBridgeSettings
     {
+        [AzureTableCheck]
         public string LogsConnectionString { get; set; }
 
         public string LogsTableName { get; set; }
 
+        [AmqpCheck]
         public string RabbitMqConnectionString { get; set; }
 
         public string ExchangeName { get; set; }
 
+        [AzureBlobCheck]
         public string OutputBlobConnectionString { get; set; }
 
         public int MaxBatchCount { get; set; }
