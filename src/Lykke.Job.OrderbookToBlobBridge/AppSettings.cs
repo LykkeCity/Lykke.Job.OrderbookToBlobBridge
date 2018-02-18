@@ -39,5 +39,8 @@ namespace Lykke.Job.OrderbookToBlobBridge
         public int MaxBatchCount { get; set; }
 
         public int MinBatchCount { get; set; }
+        
+        [Optional]
+        public bool UseMessagePack { get; set; }
     }
 }
