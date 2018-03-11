@@ -52,6 +52,7 @@ namespace Lykke.Job.OrderbookToBlobBridge.Modules
                 _settings.MaxBatchCount,
                 _settings.MinBatchCount,
                 _settings.OutputBlobConnectionString,
+                _settings.UseMessagePack,
                 _console,
                 _log);
             builder.RegisterInstance(subscriber)

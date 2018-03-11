@@ -20,6 +20,7 @@ namespace Lykke.Job.OrderbookToBlobBridge.RabbitSubscribers
         private readonly string _exchangeName;
         private readonly int _maxBatchCount;
         private readonly int _minBatchCount;
+        private readonly bool _useMessagePack;
         private readonly CloudStorageAccount _storageAccount;
         private readonly IConsole _console;
         private readonly ILog _log;
@@ -28,12 +29,12 @@ namespace Lykke.Job.OrderbookToBlobBridge.RabbitSubscribers
 
         private readonly ConcurrentDictionary<string, BlobSaver> _dict = new ConcurrentDictionary<string, BlobSaver>();
 
-        public OrderbookSubscriber(
-            string rabbitMqConnectionString,
+        public OrderbookSubscriber(string rabbitMqConnectionString,
             string exchangeName,
             int maxBatchCount,
             int minBatchCount,
             string blobStorageConnectionString,
+            bool useMessagePack,
             IConsole console,
             ILog log)
         {
@@ -41,6 +42,7 @@ namespace Lykke.Job.OrderbookToBlobBridge.RabbitSubscribers
             _exchangeName = exchangeName;
             _maxBatchCount = maxBatchCount;
             _minBatchCount = minBatchCount;
+            _useMessagePack = useMessagePack;
             _storageAccount = CloudStorageAccount.Parse(blobStorageConnectionString);
             _console = console;
             _log = log;
@@ -60,11 +62,14 @@ namespace Lykke.Job.OrderbookToBlobBridge.RabbitSubscribers
                 .CreateForSubscriber(_rabbitMqConnectionString, _exchangeName, "orderbooktoblobbridge")
                 .MakeDurable();
 
+            var deserializer = _useMessagePack
+                ? (IMessageDeserializer<OrderbookMessage>) new MessagePackMessageDeserializer<OrderbookMessage>()
+                : new JsonMessageDeserializer<OrderbookMessage>();
             _subscriber = new RabbitMqSubscriber<OrderbookMessage>(settings,
                     new ResilientErrorHandlingStrategy(_log, settings,
                         retryTimeout: TimeSpan.FromSeconds(10),
                         next: new DeadQueueErrorHandlingStrategy(_log, settings)))
-                .SetMessageDeserializer(new JsonMessageDeserializer<OrderbookMessage>())
+                .SetMessageDeserializer(deserializer)
                 .SetMessageReadStrategy(new MessageReadWithTemporaryQueueStrategy())
                 .Subscribe(ProcessMessageAsync)
                 .CreateDefaultBinding()
