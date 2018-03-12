@@ -48,9 +48,9 @@ namespace Lykke.Job.OrderbookToBlobBridge.RabbitSubscribers
             _log = log;
 
             var containerRef = _storageAccount.CreateCloudBlobClient().GetContainerReference(BlobSaver.RestartContainer);
-            bool containerExists = containerRef.ExistsAsync().Result;
+            bool containerExists = containerRef.ExistsAsync().GetAwaiter().GetResult();
             if (!containerExists)
-                containerRef.CreateAsync(BlobContainerPublicAccessType.Off, null, null).Wait();
+                containerRef.CreateAsync(BlobContainerPublicAccessType.Off, null, null).GetAwaiter().GetResult();
         }
 
         public void Start()

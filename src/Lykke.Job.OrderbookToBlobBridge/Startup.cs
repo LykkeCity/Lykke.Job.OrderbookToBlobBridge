@@ -11,12 +11,12 @@ using AzureStorage.Tables;
 using Common.Log;
 using Lykke.Common.ApiLibrary.Middleware;
 using Lykke.Common.ApiLibrary.Swagger;
+using Lykke.Common.Api.Contract.Responses;
 using Lykke.Logs;
 using Lykke.Logs.Slack;
 using Lykke.SettingsReader;
 using Lykke.SlackNotification.AzureQueue;
 using Lykke.Job.OrderbookToBlobBridge.Core.Services;
-using Lykke.Job.OrderbookToBlobBridge.Models;
 using Lykke.Job.OrderbookToBlobBridge.Modules;
 
 namespace Lykke.Job.OrderbookToBlobBridge
@@ -74,7 +74,7 @@ namespace Lykke.Job.OrderbookToBlobBridge
             }
             catch (Exception ex)
             {
-                _log?.WriteFatalErrorAsync(nameof(Startup), nameof(ConfigureServices), "", ex).Wait();
+                _log?.WriteFatalError(nameof(Startup), nameof(ConfigureServices), ex);
                 throw;
             }
         }
@@ -96,13 +96,13 @@ namespace Lykke.Job.OrderbookToBlobBridge
                 });
                 app.UseStaticFiles();
 
-                appLifetime.ApplicationStarted.Register(() => StartApplication().Wait());
-                appLifetime.ApplicationStopping.Register(() => StopApplication().Wait());
-                appLifetime.ApplicationStopped.Register(() => CleanUp().Wait());
+                appLifetime.ApplicationStarted.Register(() => StartApplication().GetAwaiter().GetResult());
+                appLifetime.ApplicationStopping.Register(() => StopApplication().GetAwaiter().GetResult());
+                appLifetime.ApplicationStopped.Register(() => CleanUp().GetAwaiter().GetResult());
             }
             catch (Exception ex)
             {
-                _log?.WriteFatalErrorAsync(nameof(Startup), nameof(ConfigureServices), "", ex).Wait();
+                _log?.WriteFatalError(nameof(Startup), nameof(ConfigureServices), ex);
                 throw;
             }
         }

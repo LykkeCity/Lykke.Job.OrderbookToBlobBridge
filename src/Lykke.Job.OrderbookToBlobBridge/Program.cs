@@ -47,7 +47,7 @@ namespace Lykke.Job.OrderbookToBlobBridge
                         {
                             Console.ReadKey(true);
                         }))
-                    .Wait();
+                    .GetAwaiter().GetResult();
             }
 
             Console.WriteLine("Terminated");
