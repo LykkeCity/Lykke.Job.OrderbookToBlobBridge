@@ -89,14 +89,14 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
             {
                 try
                 {
-                    SaveToBlobAsync(_restartBlob, _queue.Count, true).Wait();
+                    SaveToBlobAsync(_restartBlob, _queue.Count, true).GetAwaiter().GetResult();
                 }
                 catch (Exception ex)
                 {
-                    _log.WriteErrorAsync(
+                    _log.WriteError(
                         "BlobSaver.Stop." + _containerName,
                         _restartBlob?.Uri != null ? _restartBlob.Uri.ToString() : "",
-                        ex).Wait();
+                        ex);
                 }
             }
         }

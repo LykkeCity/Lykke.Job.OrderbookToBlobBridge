@@ -21,12 +21,14 @@ namespace Lykke.Job.OrderbookToBlobBridge.Services
             _stopItems.Add(stopItem);
         }
 
-        public async Task StopAsync()
+        public Task StopAsync()
         {
             foreach (var stopItem in _stopItems)
             {
                 stopItem.Stop();
             }
+
+            return Task.CompletedTask;
         }
     }
 }
