@@ -16,6 +16,9 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
         private const string _timeFormat = "yyyy-MM-dd-HH";
         private const int _warningQueueCount = 1000;
         private const int _maxBlockSize = 4 * 1024 * 1024; // 4 Mb
+        //TODO - remove reading from restart blob on load
+        private const string _restartContainer = "orderbook-to-blob-bridge-restart";
+
         private readonly ILog _log;
         private readonly string _containerName;
         private readonly CloudBlobClient _blobClient;
@@ -34,9 +37,6 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
         private volatile bool _mustStop;
         private Thread _thread;
         private CloudAppendBlob _blob;
-        private CloudAppendBlob _restartBlob;
-
-        public const string RestartContainer = "orderbook-to-blob-bridge-restart";
 
         public BlobSaver(
             CloudStorageAccount storageAccount,
@@ -85,19 +85,10 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
         public void Stop()
         {
             _mustStop = true;
-            if (_restartBlob != null)
+            while (true)
             {
-                try
-                {
-                    SaveToBlobAsync(_restartBlob, _queue.Count, true).GetAwaiter().GetResult();
-                }
-                catch (Exception ex)
-                {
-                    _log.WriteError(
-                        "BlobSaver.Stop." + _containerName,
-                        _restartBlob?.Uri != null ? _restartBlob.Uri.ToString() : "",
-                        ex);
-                }
+                if (_queue.Count == 0)
+                    break;
             }
         }
 
@@ -107,8 +98,12 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
             {
                 try
                 {
-                    _restartBlob = await GetWriteBlobAsync(RestartContainer, _containerName);
-                    string allData = await _restartBlob.DownloadTextAsync();
+                    var restartBlob = await GetWriteBlobAsync(_restartContainer, _containerName);
+                    bool exists = await restartBlob.ExistsAsync();
+                    if (!exists)
+                        break;
+
+                    string allData = await restartBlob.DownloadTextAsync();
                     if (!string.IsNullOrWhiteSpace(allData))
                     {
                         var items = allData.Split(Environment.NewLine);
@@ -170,10 +165,10 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
                     "BlobSaver.ProcessQueueAsync." + _containerName,
                     _blob?.Uri != null ? _blob.Uri.ToString() : "",
                     $"{itemsCount} items in queue");
-            if (itemsCount == 0 || itemsCount < _minBatchCount && _lastDay.HasValue && DateTime.UtcNow.Subtract(_lastDay.Value) < TimeSpan.FromHours(1))
+            if (itemsCount == 0
+                || !_mustStop && itemsCount < _minBatchCount && _lastDay.HasValue && DateTime.UtcNow.Subtract(_lastDay.Value) < TimeSpan.FromHours(1))
             {
-                if (!_mustStop)
-                    await Task.Delay(_delay);
+                await Task.Delay(_delay);
                 return;
             }
 

@@ -3,12 +3,12 @@ using System.Text;
 using System.Collections.Concurrent;
 using System.Threading.Tasks;
 using Microsoft.WindowsAzure.Storage;
-using Microsoft.WindowsAzure.Storage.Blob;
 using Autofac;
 using Common;
 using Common.Log;
 using Lykke.RabbitMqBroker;
 using Lykke.RabbitMqBroker.Subscriber;
+using Lykke.Job.OrderbookToBlobBridge.Core.Services;
 using Lykke.Job.OrderbookToBlobBridge.AzureRepositories;
 using Lykke.Job.OrderbookToBlobBridge.IncomingMessages;
 
@@ -29,12 +29,14 @@ namespace Lykke.Job.OrderbookToBlobBridge.RabbitSubscribers
 
         private readonly ConcurrentDictionary<string, BlobSaver> _dict = new ConcurrentDictionary<string, BlobSaver>();
 
-        public OrderbookSubscriber(string rabbitMqConnectionString,
+        public OrderbookSubscriber(
+            string rabbitMqConnectionString,
             string exchangeName,
             int maxBatchCount,
             int minBatchCount,
             string blobStorageConnectionString,
             bool useMessagePack,
+            IShutdownManager shutdownManager,
             IConsole console,
             ILog log)
         {
@@ -47,10 +49,7 @@ namespace Lykke.Job.OrderbookToBlobBridge.RabbitSubscribers
             _console = console;
             _log = log;
 
-            var containerRef = _storageAccount.CreateCloudBlobClient().GetContainerReference(BlobSaver.RestartContainer);
-            bool containerExists = containerRef.ExistsAsync().GetAwaiter().GetResult();
-            if (!containerExists)
-                containerRef.CreateAsync(BlobContainerPublicAccessType.Off, null, null).GetAwaiter().GetResult();
+            shutdownManager.Add(this);
         }
 
         public void Start()
@@ -86,10 +85,7 @@ namespace Lykke.Job.OrderbookToBlobBridge.RabbitSubscribers
         public void Stop()
         {
             _subscriber.Stop();
-            foreach (var saver in _dict.Values)
-            {
-                saver.Stop();
-            }
+            Parallel.ForEach(_dict.Values, i => i.Stop());
         }
 
         private async Task ProcessMessageAsync(OrderbookMessage item)

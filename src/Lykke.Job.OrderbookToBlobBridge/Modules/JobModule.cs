@@ -1,6 +1,6 @@
 ﻿using Autofac;
-using Common;
 using Common.Log;
+using Lykke.Common;
 using Lykke.SettingsReader;
 using Lykke.Job.OrderbookToBlobBridge.Core.Services;
 using Lykke.Job.OrderbookToBlobBridge.Services;
@@ -33,6 +33,10 @@ namespace Lykke.Job.OrderbookToBlobBridge.Modules
                 .As<ILog>()
                 .SingleInstance();
 
+            builder.RegisterInstance(_console)
+                .As<IConsole>()
+                .SingleInstance();
+
             builder.RegisterType<HealthService>()
                 .As<IHealthService>()
                 .SingleInstance();
@@ -41,24 +45,20 @@ namespace Lykke.Job.OrderbookToBlobBridge.Modules
                 .As<IStartupManager>()
                 .SingleInstance();
 
-            var shutdownManager = new ShutdownManager(_log);
-            builder.RegisterInstance(shutdownManager)
+            builder.RegisterType<ShutdownManager>()
                 .As<IShutdownManager>()
                 .SingleInstance();
 
-            var subscriber = new OrderbookSubscriber(
-                _settings.RabbitMqConnectionString,
-                _settings.ExchangeName,
-                _settings.MaxBatchCount,
-                _settings.MinBatchCount,
-                _settings.OutputBlobConnectionString,
-                _settings.UseMessagePack,
-                _console,
-                _log);
-            builder.RegisterInstance(subscriber)
+            builder.RegisterResourcesMonitoring(_log);
+
+            builder.RegisterType<OrderbookSubscriber>()
                 .As<IStartable>()
-                .As<IStopable>();
-            shutdownManager.Add(subscriber);
+                .WithParameter("rabbitMqConnectionString", _settings.RabbitMqConnectionString)
+                .WithParameter("exchangeName", _settings.ExchangeName)
+                .WithParameter("maxBatchCount", _settings.MaxBatchCount)
+                .WithParameter("minBatchCount", _settings.MinBatchCount)
+                .WithParameter("blobStorageConnectionString", _settings.OutputBlobConnectionString)
+                .WithParameter("useMessagePack", _settings.UseMessagePack);
         }
     }
 }
