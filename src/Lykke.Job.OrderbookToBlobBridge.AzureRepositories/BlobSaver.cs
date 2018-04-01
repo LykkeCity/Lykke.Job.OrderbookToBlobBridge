@@ -2,7 +2,6 @@
 using System.Text;
 using System.IO;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.WindowsAzure.Storage;
@@ -16,8 +15,6 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
         private const string _timeFormat = "yyyy-MM-dd-HH";
         private const int _warningQueueCount = 1000;
         private const int _maxBlockSize = 4 * 1024 * 1024; // 4 Mb
-        //TODO - remove reading from restart blob on load
-        private const string _restartContainer = "orderbook-to-blob-bridge-restart";
 
         private readonly ILog _log;
         private readonly string _containerName;
@@ -45,7 +42,7 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
             int minBatchCount,
             ILog log)
         {
-            _containerName = containerName.Replace('.', '-').ToLower();
+            _containerName = containerName.Replace('_', '-').Replace('.', '-').ToLower();
             _maxInBatch = maxBatchCount > 0 ? maxBatchCount : 1000;
             _minBatchCount = minBatchCount > 0 ? minBatchCount : 10;
             _log = log;
@@ -98,33 +95,6 @@ namespace Lykke.Job.OrderbookToBlobBridge.AzureRepositories
             {
                 try
                 {
-                    var restartBlob = await GetWriteBlobAsync(_restartContainer, _containerName);
-                    bool exists = await restartBlob.ExistsAsync();
-                    if (!exists)
-                        break;
-
-                    string allData = await restartBlob.DownloadTextAsync();
-                    if (!string.IsNullOrWhiteSpace(allData))
-                    {
-                        var items = allData.Split(Environment.NewLine);
-                        var list = new List<Tuple<DateTime, string>>();
-                        for (int i = 0; i < items.Length; i += 2)
-                        {
-                            bool dateParsed = DateTime.TryParseExact(
-                                items[i].Trim(),
-                                _timeFormat,
-                                CultureInfo.InvariantCulture,
-                                DateTimeStyles.AssumeUniversal,
-                                out DateTime date);
-                            if (!dateParsed)
-                                continue;
-                            list.Add(new Tuple<DateTime, string>(date, items[i + 1]));
-                        }
-                        _queue.InsertRange(0, list);
-
-                        await _log.WriteInfoAsync("BlobSaver.ProcessQueue", _containerName, $"Loaded {list.Count} items");
-                    }
-
                     var containerRef = _blobClient.GetContainerReference(_containerName);
                     if (!(await containerRef.ExistsAsync()))
                     {
